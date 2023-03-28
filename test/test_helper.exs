@@ -7,10 +7,13 @@ defmodule Statix.TestCase do
 
   using options do
     port = Keyword.get(options, :port, 8125)
+    socket_path = Keyword.get(options, :socket_path)
 
     quote do
       setup_all do
-        {:ok, _} = Statix.TestServer.start_link(unquote(port), __MODULE__.Server)
+        {:ok, _} =
+          Statix.TestServer.start_link(unquote(socket_path), unquote(port), __MODULE__.Server)
+
         :ok
       end
 

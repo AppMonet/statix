@@ -1,13 +1,20 @@
 defmodule Statix.TestServer do
   use GenServer
 
-  def start_link(port, test_module) do
-    GenServer.start_link(__MODULE__, port, name: test_module)
+  def start_link(socket_path, port, test_module) do
+    GenServer.start_link(__MODULE__, {socket_path, port}, name: test_module)
   end
 
   @impl true
-  def init(port) do
-    {:ok, socket} = :gen_udp.open(port, [:binary, active: true])
+  def init({socket_path, port}) do
+    {port, opts} =
+      if is_nil(socket_path) do
+        {port, [:binary, active: true]}
+      else
+        {0, [:local, :binary, active: true, ip: {:local, to_charlist(socket_path)}]}
+      end
+
+    {:ok, socket} = :gen_udp.open(port, opts)
     {:ok, %{socket: socket, test: nil}}
   end
 

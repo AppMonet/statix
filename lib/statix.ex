@@ -359,7 +359,13 @@ defmodule Statix do
   @doc false
   def new(module, options) do
     config = get_config(module, options)
-    conn = Conn.new(config.host, config.port)
+
+    conn =
+      case config do
+        %{type: :inet} -> Conn.new(config.host, config.port)
+        %{type: :local} -> Conn.new(:local, config.host)
+      end
+
     header = IO.iodata_to_binary([conn.header | config.prefix])
 
     %__MODULE__{
@@ -421,9 +427,14 @@ defmodule Statix do
         env |> Keyword.get_values(:tags) |> Enum.concat()
       end)
 
+    type = if options[:local], do: :local, else: :inet
+    socket_path = if type == :local, do: Keyword.fetch!(options, :socket_path)
+
     %{
       prefix: build_prefix(env, overrides),
+      type: type,
       host: Keyword.get(options, :host, "127.0.0.1"),
+      socket_path: socket_path,
       port: Keyword.get(options, :port, 8125),
       pool_size: Keyword.get(options, :pool_size, 1),
       tags: tags
