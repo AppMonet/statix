@@ -261,47 +261,21 @@ defmodule Statix do
   """
   @callback measure(key, function :: (() -> result)) :: result when result: var
 
-  defmacro __using__(opts) do
+  defmacro __using__(_opts) do
     current_statix =
-      if Keyword.get(opts, :runtime_config, false) do
-        quote do
-          @statix_key Module.concat(__MODULE__, :__statix__)
+      quote do
+        @statix_key Module.concat(__MODULE__, :__statix__)
 
-          def connect(options \\ []) do
-            statix = Statix.new(__MODULE__, options)
-            Application.put_env(:statix, @statix_key, statix)
-
-            Statix.open(statix)
-            :ok
-          end
-
-          @compile {:inline, [current_statix: 0]}
-
-          defp current_statix() do
-            Application.fetch_env!(:statix, @statix_key)
-          end
+        def connect(options \\ []) do
+          statix = Statix.new(__MODULE__, options)
+          Application.put_env(:statix, @statix_key, statix)
+          :ok
         end
-      else
-        quote do
-          @statix Statix.new(__MODULE__, [])
 
-          def connect(options \\ []) do
-            if @statix != Statix.new(__MODULE__, options) do
-              raise(
-                "the current configuration for #{inspect(__MODULE__)} differs from " <>
-                  "the one that was given during the compilation.\n" <>
-                  "Be sure to use :runtime_config option " <>
-                  "if you want to have different configurations"
-              )
-            end
+        @compile {:inline, [current_statix: 0]}
 
-            Statix.open(@statix)
-            :ok
-          end
-
-          @compile {:inline, [current_statix: 0]}
-
-          defp current_statix(), do: @statix
+        defp current_statix() do
+          Application.fetch_env!(:statix, @statix_key)
         end
       end
 
@@ -367,25 +341,19 @@ defmodule Statix do
       end
 
     header = IO.iodata_to_binary([conn.header | config.prefix])
+    # header = [conn.header | config.prefix]
+    conn = %{conn | header: header}
 
     %__MODULE__{
-      conn: %{conn | header: header},
-      pool: build_pool(module, config.pool_size),
+      conn: conn,
+      pool: build_pool(conn, config.pool_size),
       tags: config.tags
     }
   end
 
-  defp build_pool(module, 1), do: [module]
-
-  defp build_pool(module, size) do
-    Enum.map(1..size, &:"#{module}-#{&1}")
-  end
-
-  @doc false
-  def open(%__MODULE__{conn: conn, pool: pool}) do
-    Enum.each(pool, fn name ->
-      %{sock: sock} = Conn.open(conn)
-      Process.register(sock, name)
+  defp build_pool(conn, size) do
+    Enum.map(1..size, fn _ ->
+      Conn.open(conn).sock
     end)
   end
 
@@ -403,15 +371,15 @@ defmodule Statix do
     if is_nil(sample_rate) or sample_rate >= :rand.uniform() do
       options = put_global_tags(options, tags)
 
-      %{conn | sock: pick_name(pool)}
+      %{conn | sock: pick_sock(pool)}
       |> Conn.transmit(type, key, to_string(value), options)
     else
       :ok
     end
   end
 
-  defp pick_name([name]), do: name
-  defp pick_name(pool), do: Enum.random(pool)
+  defp pick_sock([sock]), do: sock
+  defp pick_sock(pool), do: Enum.random(pool)
 
   defp get_config(module, overrides) do
     {module_env, global_env} =
@@ -427,15 +395,21 @@ defmodule Statix do
         env |> Keyword.get_values(:tags) |> Enum.concat()
       end)
 
-    type = if options[:local], do: :local, else: :inet
-    socket_path = if type == :local, do: Keyword.fetch!(options, :socket_path)
+    host = Keyword.get(options, :host, "127.0.0.1")
+
+    type =
+      case host do
+        {:local, _} -> :local
+        _ -> :inet
+      end
+
+    port = if type == :local, do: 0, else: Keyword.get(options, :port, 8125)
 
     %{
       prefix: build_prefix(env, overrides),
       type: type,
-      host: Keyword.get(options, :host, "127.0.0.1"),
-      socket_path: socket_path,
-      port: Keyword.get(options, :port, 8125),
+      host: host,
+      port: port,
       pool_size: Keyword.get(options, :pool_size, 1),
       tags: tags
     }

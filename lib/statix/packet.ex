@@ -28,11 +28,11 @@ defmodule Statix.Packet do
       ] ++ anc_data_part
   end
 
-  def header(:local, socket_path) do
+  def header(:local, {:local, socket_path}) do
     @inet_local ++
       [
         byte_size(socket_path),
-        to_charlist(socket_path)
+        socket_path
       ]
   end
 

@@ -1,6 +1,7 @@
 # defmodule Statix.UnixSocketTest do
-#   @socket "/tmp/statix_unix_socket_test.sock"
-#   use Statix.TestCase, socket_path: @socket
+#   @socket "/var/run/datadog/dsd.socket"
+#   # use Statix.TestCase, socket_path: @socket
+#   use ExUnit.Case, async: false
 #
 #   use Statix, runtime_config: true
 #
@@ -8,7 +9,7 @@
 #     connect(local: true, socket_path: @socket)
 #   end
 #
-#   test "starts :pool_size number of ports and randomly picks one" do
+#   test "is able to send metrics to a local unix socket" do
 #     [
 #       {:increment, [3]},
 #       {:decrement, [3]},
@@ -20,6 +21,8 @@
 #     ]
 #     |> Enum.map(fn {function, arguments} ->
 #       apply(__MODULE__, function, ["sample" | arguments])
+#       |> IO.inspect()
+#
 #       assert_receive {:test_server, _, <<"sample:", _::bytes>>}
 #     end)
 #   end

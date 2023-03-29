@@ -1,7 +1,7 @@
 defmodule Statix.Conn do
   @moduledoc false
 
-  defstruct [:sock, :header, :type]
+  defstruct [:sock, :header, :type, :address, :port]
 
   alias Statix.Packet
 
@@ -9,7 +9,7 @@ defmodule Statix.Conn do
 
   def new(:local, path) do
     header = Packet.header(:local, path)
-    %__MODULE__{header: header, type: :local}
+    %__MODULE__{header: header, type: :local, address: path, port: 0}
   end
 
   def new(host, port) when is_binary(host) do
@@ -20,7 +20,7 @@ defmodule Statix.Conn do
     case :inet.getaddr(host, :inet) do
       {:ok, address} ->
         header = Packet.header(:inet, address, port)
-        %__MODULE__{header: header, type: :inet}
+        %__MODULE__{header: header, type: :inet, address: address, port: port}
 
       {:error, reason} ->
         raise(
@@ -40,12 +40,18 @@ defmodule Statix.Conn do
     %__MODULE__{conn | sock: sock}
   end
 
-  def transmit(%__MODULE__{header: header, sock: sock}, type, key, val, options)
+  def transmit(
+        %__MODULE__{header: header, address: address, port: port, sock: sock},
+        type,
+        key,
+        val,
+        options
+      )
       when is_binary(val) and is_list(options) do
     result =
       header
       |> Packet.build(type, key, val, options)
-      |> transmit(sock)
+      |> transmit(sock, address, port)
 
     if result == {:error, :port_closed} do
       Logger.error(fn ->
@@ -57,17 +63,26 @@ defmodule Statix.Conn do
     result
   end
 
-  defp transmit(packet, sock) do
+  defp transmit(packet, sock, host, port) do
     try do
-      Port.command(sock, packet)
+      :gen_udp.send(sock, host, port, packet)
+      # Port.command(sock, packet)
     rescue
       ArgumentError ->
         {:error, :port_closed}
     else
-      true ->
-        receive do
-          {:inet_reply, _port, status} -> status
-        end
+      # For :gen_udp.send/4
+      :ok ->
+        :ok
+
+      {:error, _} = status ->
+        status
+        #
+        # For Port.command/2
+        # true ->
+        #   receive do
+        #     {:inet_reply, _port, status} -> status
+        #   end
     end
   end
 end
